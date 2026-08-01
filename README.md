@@ -118,8 +118,8 @@ reduction and 47% lower median latency for 0.7 points of entity F1.
   invented identifier formats.
 - **Rare types are unmeasured, not good** — nine lack the support to evaluate.
 - **Latency is model inference only**, excluding tokenisation and span merging;
-  **Raspberry Pi latency was estimated, not benchmarked** — all figures come from
-  an x86 laptop CPU.
+  **Raspberry Pi latency was neither benchmarked nor estimated** — all figures
+  come from an x86 laptop CPU.
 - **Not measured:** sustained throughput, thermal behaviour, accuracy under
   transcription error, confidence calibration.
 - A 0.015% gap (46 of 311,477) between the two span-counting paths resolves
