@@ -1,0 +1,35 @@
+Copyright (c) 2026 Yahya Alsharif.
+
+All rights reserved.
+
+This repository is published for portfolio and reference purposes only.
+No permission is granted to copy, modify, distribute, or use any part
+of its original contents. Viewing is welcome; reuse is not permitted
+without written permission.
+
+This notice covers the original work in this repository: the evaluation
+notebook, written documentation, figures, and analysis.
+
+It does NOT cover third-party components, which remain under their own
+licences:
+
+  - huawei-noah/TinyBERT_General_4L_312D - LICENCE UNVERIFIED, from
+    Hugging Face (https://huggingface.co/huawei-noah/TinyBERT_General_4L_312D).
+    The model card declares no licence: it has no licence field, no LICENSE
+    file, and no licence statement in its text. Huawei's separate
+    Pretrained-Language-Model repository on GitHub is Apache-2.0, but that
+    licence does not demonstrably transfer to this Hugging Face checkpoint,
+    and no Apache-2.0 grant is assumed here. Anyone intending to reuse the
+    base model should establish its licensing terms independently.
+
+  - ai4privacy/pii-masking-openpii-1.5m - CC BY 4.0 (Creative Commons
+    Attribution 4.0 International), from Hugging Face
+    (https://huggingface.co/datasets/ai4privacy/pii-masking-openpii-1.5m).
+    Published by Ai4Privacy / Ai Suisse SA. CC BY 4.0 requires attribution:
+    the dataset is the work of Ai4Privacy, and this repository credits
+    Ai4Privacy as its source in both this notice and the README. No
+    endorsement by Ai4Privacy is implied.
+
+No dataset rows are reproduced in this repository. All example text in the
+evaluation notebook is fabricated for illustration and uses reserved
+example domains (RFC 2606) and reserved telephone number ranges.
