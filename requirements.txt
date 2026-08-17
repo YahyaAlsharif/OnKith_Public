@@ -8,6 +8,7 @@ tokenizers==0.22.2
 onnx==1.22.0
 onnxruntime==1.27.0
 numpy==2.4.6
+pandas==3.0.3
 scikit-learn==1.9.0
 seqeval==1.2.2
 matplotlib==3.11.0

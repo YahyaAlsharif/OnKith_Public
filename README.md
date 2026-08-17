@@ -1,151 +1,225 @@
-# OnKith — PII Span Detection: Model Evaluation
+# OnKith — Local PII Detection: Model Evolution and Evaluation
 
-OnKith is a privacy-first voice assistant that transcribes speech and strips
-personally identifiable information entirely on-device.
+OnKith is a privacy-first system intended to detect and remove personally
+identifiable information (PII) locally, before sensitive text leaves the
+device.
 
-**This is the public evaluation repository.** The full OnKith system lives in a
-private team repository. This repo covers my own contribution — model selection,
-training, evaluation, and performance characterisation of the PII span-detection
-model — and contains no product code, no user data, no deployment
-infrastructure, and no model weights.
+**This is the public model-evaluation repository.** The complete OnKith system
+lives in a private team repository. This repository documents my model-focused
+contribution: model selection, data preparation and label alignment, training,
+evaluation, quantization, and deployment-oriented model analysis. It contains
+no product code, user data, deployment infrastructure, tokenizers, or trained
+model weights.
 
 **Links:** [onkith.online](https://onkith.online/) ·
 [LinkedIn](https://www.linkedin.com/company/onkith/)
 
-## The problem
+## Why local detection matters
 
-Redaction is only a privacy guarantee if it happens before data leaves your
-control — a cloud service that promises to delete identifiers has already
-received them. So detection must run on-device: on a CPU, inside the memory
-budget of a single-board computer already running a speech model. That
-constraint, not accuracy alone, drove every decision below.
+Redaction protects privacy only when it happens before data is sent elsewhere.
+For OnKith, the PII model therefore has to run locally on a CPU while sharing a
+limited memory and compute budget with the speech and application pipeline.
+Model quality matters, but so do artifact size, latency, memory headroom, and
+the behavior of the complete system on its target device.
 
 ## My role
 
-I owned model selection, training, evaluation, and quantisation: the base model
-choice, label alignment and split construction, the training run, the evaluation
-protocol, the INT8 variant, and the trade-off measured here. I did not build the
-deployment integration, the audio and speech-recognition pipeline, or the product
-surface — those are my teammates' work.
+I owned the model work represented here: selecting and training the neural
+models, preparing the data and label alignment, defining the evaluation
+protocols, producing INT8 ONNX variants, and measuring their quality and
+efficiency trade-offs. I did not build the deployment integration, audio and
+speech-recognition pipeline, or product surface; those are my teammates' work.
 
-## Model
+## Model evolution
 
-**Base:** `huawei-noah/TinyBERT_General_4L_312D` (4 layers, hidden 312, 512-token
-context), fine-tuned for 67-label BIO token classification. Chosen because the
-target is a Raspberry Pi 5 with 4 GB RAM that must hold a speech model in memory
-simultaneously — small enough to leave headroom, still a transformer, which span
-boundaries need.
+### BiLSTM baseline
 
-**Alternatives considered**
+An early BiLSTM tagger was trained on a different dataset,
+`ai4privacy/pii-masking-300k`, using 57 labels and its own 80/20 split. It
+reached 0.605 token-level binary F1. Because both the dataset and metric differ,
+that result is historical context rather than a direct comparison with either
+transformer model.
 
-- **BiLSTM tagger — trained, rejected.** An earlier baseline on a *different*
-  dataset (`ai4privacy/pii-masking-300k`, 57 labels, own 80/20 split) reached
-  0.605 F1 — token-level and binary (PII vs non-PII), a strictly more permissive
-  metric than anything below, so it is not comparable to the TinyBERT results and
-  is not in the results table.
-- **`DataikuNLP/kiji-pii-model-onnx` — rejected, not trained.** Its training data
-  is fully documented, so the rejection is on fit: **size** — 63.3 MB quantised
-  ONNX plus a 248.9 MB `model.onnx.data` external weights file, ~312 MB against
-  our 13.7 MB, roughly 23× on a Pi 5; **languages** — English, German, French,
-  Spanish, Dutch, Danish only, no Arabic; **taxonomy** — 26 types under different
-  names (`FIRSTNAME`/`PHONENUMBER`/`SSN` vs our
-  `GIVENNAME`/`TELEPHONENUM`/`SOCIALNUM`), missing types we cover; plus a
-  coreference head adding 7 unused labels at inference cost. Its card describes a
-  DistilBERT encoder while its model tree lists `microsoft/deberta-v3-small` — an
-  inconsistency noted, nothing inferred from it. Licence: apache-2.0.
-- **TinyBERT-6 — rejected without an experiment.** A judgement call: the size
-  increase was not worth a probable small accuracy gain given the on-device
-  target. It was not trained, benchmarked, or compared.
+### TinyBERT Model V1
 
-## Data
+`huawei-noah/TinyBERT_General_4L_312D` was the first production-oriented model:
+4 transformer layers, hidden size 312, and 67 BIO labels covering 33 entity
+types. It was deliberately small because the deployment target was a Raspberry
+Pi 5 with other pipeline components competing for the same memory and compute.
+Its INT8 ONNX artifact is 13.72 MiB.
 
-`ai4privacy/pii-masking-openpii-1.5m`, revision `a785eb52…`, by **Ai4Privacy /
-Ai Suisse SA**, CC BY 4.0. English rows only.
+TinyBERT remains an important part of the project history. The original
+[TinyBERT evaluation notebook](onkith_evaluation.ipynb) contains its detailed
+FP32-versus-INT8 evaluation, baselines, per-label results, qualitative errors,
+and laptop CPU measurements.
 
-Training and evaluation use **the same source and the same pinned revision**. The
-training and model-selection splits were both carved from the official `train`
-split (90/10, seed 42, multilabel-stratified). The test split is the official
-**`validation`** split — never trained on, never used for selection: 40,909
-English rows minus 1 containing `HEIGHT` (a type absent from training), giving
-**40,908 scored rows**, 3,725,659 tokens and 311,477 spans.
+### DeBERTa-v3-xsmall Model V2
 
-Schema is **BIO**: 67 labels over 33 entity types, heavily skewed — `GIVENNAME`
-(37,702 spans), `DATE` (37,412) and `SURNAME` (32,068) are a third of all spans,
-while 4 trained types have zero test support and 9 more have ≤9. The 33 types are
-those **present in the English data as filtered**, not the publisher's documented
-taxonomy, which headlines 19 labels.
+As development progressed, the system showed enough resource headroom to
+evaluate a larger encoder, while the privacy evaluation suggested that more
+model capacity could improve detection quality. Model V2 therefore uses
+`microsoft/deberta-v3-xsmall`: 12 layers, hidden size 384, and 63 BIO labels
+covering 31 entity types.
 
-## Results
+The goal was not to maximize F1 without regard to cost. It was to determine
+whether a substantially stronger encoder could improve privacy detection while
+remaining a realistic candidate for edge deployment. The current evidence
+shows a measurable quality improvement and a substantial size and latency cost.
+Integration of DeBERTa INT8 into the final pipeline and complete Raspberry Pi 5
+validation are still pending.
 
-Entity-level (span) F1 requires the type *and* both boundaries to match exactly;
-token-level alone overstates NER-style performance.
+## Dataset and evaluation protocols
 
-| Variant | Entity P | Entity R | **Entity micro-F1** | Entity macro-F1 | Token micro-F1 |
-|---|---:|---:|---:|---:|---:|
-| FP32 ONNX | 0.9527 | 0.9603 | **0.9565** | 0.6605 | 0.9731 |
-| INT8 ONNX | 0.9436 | 0.9557 | **0.9496** | 0.6553 | 0.9696 |
-| Naive regex baseline | 0.6519 | 0.0983 | 0.1708 | 0.0546 | 0.2906 |
-| Majority class (all `O`) | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 |
-| PyTorch FP32 (export sanity check) | 0.9527 | 0.9603 | 0.9565 | — | 0.9731 |
+Both transformer models use
+[`ai4privacy/pii-masking-openpii-1.5m`](https://huggingface.co/datasets/ai4privacy/pii-masking-openpii-1.5m)
+by Ai4Privacy / Ai Suisse SA, pinned to revision
+`a785eb528e28be2693c3718a27e066970de5dadb`. The dataset card identifies it as
+CC BY 4.0.
 
-Macro-F1 is low because it weights all 33 types equally and nine score 0.000 on
-≤9 spans each; over the 20 types with ≥100 spans it is 0.9578 (FP32) and 0.9502
-(INT8). Micro-F1 is the honest summary. Quantisation cost **0.0069 entity F1**
-and raised private-character leakage from 0.00272 to 0.00311.
+There are two related but distinct public evaluations:
 
-| | On-disk | Peak process memory | Median latency | p95 | Throughput |
-|---|---:|---:|---:|---:|---:|
-| FP32 | 54.49 MB | 180.4 MB | 27.30 ms | 88.55 ms | 28.8 /s |
-| INT8 | 13.72 MB | 140.8 MB | 14.40 ms | 51.72 ms | 52.8 /s |
+- **Historical TinyBERT evaluation.** `onkith_evaluation.ipynb` filters the
+  official English validation split and excludes one row containing `HEIGHT`, a
+  label absent from that model's training data. It scores 40,908 rows under its
+  original standalone protocol.
+- **Current Model V1 versus Model V2 comparison.**
+  `deberta_vs_tinybert_int8_validation.ipynb` evaluates both INT8 ONNX models on
+  exactly the same 40,909 English validation rows, in the same order, against
+  the same gold spans and metric definitions. This is the canonical source for
+  direct TinyBERT-versus-DeBERTa claims.
 
-*Measured on Intel Core i7-13700H (laptop CPU), single-threaded, batch size 1.*
-250 timed iterations per variant after 25 warm-up runs. INT8 buys a 74.8% size
-reduction and 47% lower median latency for 0.7 points of entity F1.
+The current comparison uses exact character-boundary spans from the dataset and
+the 31-entity Model V2 ontology. It also repeats the comparison over the 30
+entity types shared by both models; neither model emitted an out-of-shared-space
+prediction, so the headline result is unchanged.
 
-## Limitations
+### Production-equivalent decoding
 
-- **The blind spot: this measures English, synthetic, written text.** Nothing
-  here measures Arabic, code-switched, or real speech-transcript input — the
-  actual deployment input, so the test split does not match the deployment
-  distribution.
-- **High per-type F1 can be memorisation.** `EMAIL` scores 0.99, yet with the
-  address and sentence fixed and only the domain varying, the model detected
-  `gmail.com`, `outlook.com`, `yahoo.com` and missed `example.com`,
-  `example.org`, `northwind-consulting.co.uk` — 3 of 6.
-- **Failure modes** (FP32 exact on 4 of 8 qualitative examples, INT8 on 3):
-  uncued space-separated phone numbers; confusing numeric identifier types (a
-  card number tagged `TAXNUM`); merging given name and surname into one span;
-  invented identifier formats.
-- **Rare types are unmeasured, not good** — nine lack the support to evaluate.
-- **Latency is model inference only**, excluding tokenisation and span merging;
-  **Raspberry Pi latency was neither benchmarked nor estimated** — all figures
-  come from an x86 laptop CPU.
-- **Not measured:** sustained throughput, thermal behaviour, accuracy under
-  transcription error, confidence calibration.
-- A 0.015% gap (46 of 311,477) between the two span-counting paths resolves
-  exactly to 45 malformed `AGE` digit-fragments plus 1 merged same-type span.
+The comparison uses the correct production-equivalent decoding behavior for
+each tokenizer. TinyBERT's WordPiece tokenizer separates punctuation and can
+use tokenizer `word_ids()` directly. DeBERTa-v3 uses SentencePiece, where
+punctuation may remain grouped with an adjacent word, so its word groups are
+derived from character offsets. This prevents trailing punctuation from being
+incorrectly absorbed into entity spans while preserving the same BIO repair,
+whole-word promotion, span joining, and overlap-resolution rules for both
+models.
 
-## Weights
+## TinyBERT INT8 versus DeBERTa INT8
 
-**Weights are not distributed here** — a deliberate choice, as they are a team
-asset and not mine alone to publish. The notebook loads from a single `MODEL_DIR`
-constant at the top; point it at a local directory holding the ONNX, PyTorch and
-tokenizer artefacts and it runs unchanged.
+The direct comparison covers 40,909 held-out English validation rows.
 
-## Reproducing
+| Metric | TinyBERT INT8 | DeBERTa INT8 |
+|---|---:|---:|
+| Typed precision | 0.9475 | 0.9574 |
+| Typed recall | 0.9528 | 0.9601 |
+| **Typed F1** | **0.9502** | **0.9588** |
+| Binary F1 | 0.9645 | 0.9704 |
+| Character recall | 0.9971 | 0.9983 |
+| Leakage | 0.0029 | 0.0017 |
+| Overmasking | 0.0044 | 0.0029 |
+| Exact-row rate | 0.7413 | 0.7844 |
+| Model size | 13.72 MiB | 78.47 MiB |
+| Desktop single-thread median latency | 14.97 ms | 76.33 ms |
+
+DeBERTa-v3-xsmall INT8 improves typed F1 by 0.0086 absolute while reducing
+leakage from 0.0029 to 0.0017. It also reduces overmasking and raises exact-row
+correctness by 0.0431. The cost is a **5.72× larger** INT8 artifact and
+approximately **5.1× higher** measured single-thread median latency.
+
+The latency figures are local desktop CPU measurements over 500 examples after
+warm-up, with one inference thread. They are useful for comparing the two
+artifacts under the same conditions, but they are not Raspberry Pi measurements
+and do not include a final integrated pipeline benchmark.
+
+## Per-label findings
+
+Among the 20 entity types with at least 50 gold examples, the comparison reports
+zero F1 regressions. The largest supported improvements are for `TIME`,
+`SOCIALNUM`, `GIVENNAME`, `PASSPORTNUM`, `SURNAME`, and
+`DRIVERLICENSENUM`.
+
+Seven types have fewer than 50 gold spans in this split, with only one to five
+examples each, so their apparent changes are not strong evidence. The executed
+comparison notebook contains the complete support counts and per-label table.
+
+## Evaluation notebooks
+
+### Current direct comparison
+
+[`deberta_vs_tinybert_int8_validation.ipynb`](deberta_vs_tinybert_int8_validation.ipynb)
+is the primary evidence artifact for the Model V1 versus Model V2 comparison.
+Its committed outputs include:
+
+- the complete executed comparison over the shared validation rows;
+- aggregate typed, binary, character, leakage, and exact-row metrics;
+- shared-ontology and per-label analysis;
+- model-size and local runtime comparisons;
+- the full evaluation and tokenizer-aware decoder implementation; and
+- interpretation and limitations.
+
+The notebook does not contain or download model weights. Its stored outputs are
+still useful to readers who do not have access to the private/team artifacts.
+
+### Historical TinyBERT evaluation
+
+[`onkith_evaluation.ipynb`](onkith_evaluation.ipynb) remains the original detailed
+TinyBERT evaluation artifact. The figures and `metrics.json` in [`results/`](results/)
+belong to that historical standalone protocol and should not be mixed with the
+new direct-comparison metrics.
+
+## Reproducing the comparison
+
+Install the Python dependencies and open the comparison notebook in a Jupyter
+environment:
 
 ```bash
 pip install -r requirements.txt
-jupyter notebook onkith_evaluation.ipynb
 ```
 
-Set `MODEL_DIR`, then run all cells. Outputs are committed to the notebook; every
-number above is in `results/metrics.json`, with figures in `results/`.
+Place these local inputs next to the notebook before running it:
 
-## License
+```text
+tinybert_int8.onnx
+deberta_int8.onnx
+tinybert_tokenizer/
+deberta_tokenizer/
+ai4privacy_validation_en.jsonl
+```
+
+The validation JSONL can be rebuilt from the pinned public dataset revision
+using the helper defined in the notebook. The normal notebook run expects the
+prepared file locally and does not download the full source dataset.
+
+The ONNX models and tokenizers are not distributed in this repository. Trained
+weights are a team asset rather than mine alone to publish, and the notebook
+fails early with a clear list if any required local artifact is missing.
+
+## Limitations
+
+- The comparison evaluates English data only.
+- The AI4Privacy validation distribution is largely synthetic,
+  template-generated prose. It does not represent arbitrary real-world speech,
+  transcription errors, code-switching, or disfluencies.
+- Rare labels remain poorly measured; seven evaluated types have fewer than 50
+  gold spans and only one to five examples each.
+- The reported timings come from a local desktop CPU. They are not Raspberry Pi
+  latency, RAM, sustained-throughput, or thermal measurements.
+- Final integration and end-to-end Raspberry Pi 5 testing of the DeBERTa INT8
+  pipeline are not complete.
+- The comparison measures the neural models without the complete production
+  pipeline's deterministic recognizers and policy layer.
+- Model weights and tokenizers are not publicly distributed, so rerunning the
+  notebook requires locally supplied artifacts.
+- Stronger performance on this held-out distribution does not guarantee the
+  same improvement on real-world or out-of-distribution input.
+
+## License and attribution
 
 Copyright (c) 2026 Yahya Alsharif. All rights reserved — portfolio and reference
-only; see [LICENSE](LICENSE). Third-party components keep their own licences: the
-dataset is CC BY 4.0 by **Ai4Privacy / Ai Suisse SA**; the TinyBERT base model's
-licence is **UNVERIFIED** — its card declares none, and Huawei's separately
-licensed GitHub repository does not demonstrably cover this checkpoint.
+only; see [LICENSE](LICENSE).
+
+Third-party components retain their own licenses. The AI4Privacy dataset is
+identified by its dataset card as CC BY 4.0. The TinyBERT base checkpoint's
+license remains unverified: its model card declares none, and Huawei's
+separately licensed GitHub repository does not demonstrably cover that
+checkpoint.
