@@ -4,12 +4,24 @@ OnKith is a privacy-first system intended to detect and remove personally
 identifiable information (PII) locally, before sensitive text leaves the
 device.
 
-**This is the public model-evaluation repository.** The complete OnKith system
-lives in a private team repository. This repository documents my model-focused
-contribution: model selection, data preparation and label alignment, training,
-evaluation, quantization, and deployment-oriented model analysis. It contains
-no product code, user data, deployment infrastructure, tokenizers, or trained
-model weights.
+**This is my model-evaluation repository for OnKith.** It documents my
+model-focused contribution — model selection, data preparation and label
+alignment, training, evaluation, quantization, and deployment-oriented model
+analysis — as two executed notebooks with committed outputs. It contains no
+product code, user data, tokenizers, or model weights.
+
+## How this relates to the OnKith repository
+
+| Repository | What it is |
+|---|---|
+| [`YahyaAlsharif/OnKith`](https://github.com/YahyaAlsharif/OnKith) | The six-person team's complete system: the current `FullPipeline_V6` (speech recognition, DeBERTa INT8 masking, assistant layer), training and data code, committed model artifacts, and Raspberry Pi 5 benchmark runs. |
+| **`OnKith_Public`** (this repository) | A focused, self-contained record of the privacy-model evaluation I owned: TinyBERT-4 (Model V1) and DeBERTa-v3-xsmall (Model V2) on the held-out AI4Privacy English validation split. |
+
+The DeBERTa INT8 artifact evaluated here is the same file the OnKith pipeline
+ships (SHA-256 `bc8d1d7a…048106a8`, recorded in the comparison notebook). Results
+measured after this evaluation — out-of-distribution fixtures, end-to-end audio,
+and Raspberry Pi 5 deployment — are reported in the
+[OnKith README](https://github.com/YahyaAlsharif/OnKith#readme), not here.
 
 **Links:** [onkith.online](https://onkith.online/) ·
 [LinkedIn](https://www.linkedin.com/company/onkith/)
@@ -63,10 +75,11 @@ covering 31 entity types.
 
 The goal was not to maximize F1 without regard to cost. It was to determine
 whether a substantially stronger encoder could improve privacy detection while
-remaining a realistic candidate for edge deployment. The current evidence
-shows a measurable quality improvement and a substantial size and latency cost.
-Integration of DeBERTa INT8 into the final pipeline and complete Raspberry Pi 5
-validation are still pending.
+remaining a realistic candidate for edge deployment. The evidence in this
+repository shows a measurable quality improvement and a substantial size and
+latency cost. DeBERTa INT8 was subsequently integrated into the OnKith pipeline
+and measured on a Raspberry Pi 5 by the team; those results live in the
+[OnKith repository](https://github.com/YahyaAlsharif/OnKith#raspberry-pi-5-deployment).
 
 ## Dataset and evaluation protocols
 
@@ -157,8 +170,8 @@ Its committed outputs include:
 - the full evaluation and tokenizer-aware decoder implementation; and
 - interpretation and limitations.
 
-The notebook does not contain or download model weights. Its stored outputs are
-still useful to readers who do not have access to the private/team artifacts.
+The notebook does not contain or download model weights; its stored outputs can
+be read without running anything.
 
 ### Historical TinyBERT evaluation
 
@@ -190,9 +203,20 @@ The validation JSONL can be rebuilt from the pinned public dataset revision
 using the helper defined in the notebook. The normal notebook run expects the
 prepared file locally and does not download the full source dataset.
 
-The ONNX models and tokenizers are not distributed in this repository. Trained
-weights are a team asset rather than mine alone to publish, and the notebook
-fails early with a clear list if any required local artifact is missing.
+The ONNX models and tokenizers are not included in this repository; the
+notebook fails early with a clear list if any required local artifact is
+missing. The trained weights and tokenizers are published in the team's
+[OnKith repository](https://github.com/YahyaAlsharif/OnKith):
+
+| Notebook input | OnKith path |
+|---|---|
+| `tinybert_int8.onnx` | `model/TinyBERT-4/artifacts/tinybert_pii/onnx_model/model_int8.onnx` |
+| `tinybert_tokenizer/` | `model/TinyBERT-4/artifacts/tinybert_pii/tokenizer/` |
+| `deberta_int8.onnx` | `FullPipeline_V6/models/deberta_pii/model_int8.onnx` |
+| `deberta_tokenizer/` | `FullPipeline_V6/models/deberta_pii/tokenizer/` |
+
+The committed notebook outputs record the SHA-256 of each ONNX file it scored
+(TinyBERT `9efee1e3…`, DeBERTa `bc8d1d7a…`); both match the OnKith files above.
 
 ## Limitations
 
@@ -203,13 +227,12 @@ fails early with a clear list if any required local artifact is missing.
 - Rare labels remain poorly measured; seven evaluated types have fewer than 50
   gold spans and only one to five examples each.
 - The reported timings come from a local desktop CPU. They are not Raspberry Pi
-  latency, RAM, sustained-throughput, or thermal measurements.
-- Final integration and end-to-end Raspberry Pi 5 testing of the DeBERTa INT8
-  pipeline are not complete.
+  latency, RAM, sustained-throughput, or thermal measurements; those are in the
+  OnKith repository.
 - The comparison measures the neural models without the complete production
   pipeline's deterministic recognizers and policy layer.
-- Model weights and tokenizers are not publicly distributed, so rerunning the
-  notebook requires locally supplied artifacts.
+- Model weights and tokenizers are not included here, so rerunning the notebook
+  requires obtaining the artifacts listed above.
 - Stronger performance on this held-out distribution does not guarantee the
   same improvement on real-world or out-of-distribution input.
 
